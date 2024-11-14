@@ -1,19 +1,38 @@
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse
 import requests
+import google.auth
+from google.auth.transport.requests import Request
+from google.oauth2 import service_account
+import json
 
 app = FastAPI()
 
-# Replace YOUR_API_KEY with your Google Cloud API key
+# Load credentials from JSON file
+CREDENTIALS_FILE = r"YOUR_KEY"  # replace with your file path
+API_URL = "https://language.googleapis.com/v1/documents:analyzeSentiment"
 
+# Authenticate and get access token
+def get_access_token():
+    credentials = service_account.Credentials.from_service_account_file(
+        CREDENTIALS_FILE,
+        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    )
+    auth_req = Request()
+    credentials.refresh(auth_req)
+    return credentials.token
 
+# Function for sentiment analysis
 def analyze_emotion(text: str) -> str:
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Authorization": f"Bearer {get_access_token()}",
+        "Content-Type": "application/json"
+    }
     data = {
         "document": {"type": "PLAIN_TEXT", "content": text},
         "encodingType": "UTF8"
     }
-    response = requests.post(f"{API_URL}?key={API_KEY}", json=data, headers=headers)
+    response = requests.post(API_URL, json=data, headers=headers)
     sentiment = response.json().get("documentSentiment", {})
     score = sentiment.get("score", 0)
     magnitude = sentiment.get("magnitude", 0)
@@ -30,11 +49,13 @@ def analyze_emotion(text: str) -> str:
     else:
         return "Stable sentiment detected; no strong indications of mental health issues."
 
+# Main page with form
 @app.get("/", response_class=HTMLResponse)
 async def form_post():
     with open("app/templates/index.html", "r", encoding="utf-8") as file:
         return file.read()
 
+# Results page
 @app.post("/", response_class=HTMLResponse)
 async def form_submit(
     question1: str = Form(...),
